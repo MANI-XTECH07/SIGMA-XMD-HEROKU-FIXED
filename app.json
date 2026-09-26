@@ -1,0 +1,6 @@
+{
+  "name": "SIGMA XMD Pairing",
+  "description": "SIGMA XMD WhatsApp bot and pairing website",
+  "buildpacks": [{"url": "heroku/nodejs"}],
+  "formation": {"web": {"quantity": 1, "size": "basic"}}
+}

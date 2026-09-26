@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070711">
+  <title>SIGMA XMD • Pair Code</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#070711;color:#fff}
+    body{display:grid;place-items:center;padding:22px;overflow-x:hidden}
+    body:before{content:"";position:fixed;inset:-30%;background:radial-gradient(circle at 20% 20%,#6d28d955,transparent 32%),radial-gradient(circle at 80% 70%,#06b6d455,transparent 28%);filter:blur(30px);pointer-events:none}
+    .wrap{position:relative;width:min(470px,100%)}
+    .card{background:#0d0d19dd;border:1px solid #ffffff18;border-radius:30px;padding:28px;box-shadow:0 30px 90px #0009;backdrop-filter:blur(22px)}
+    .brand{display:flex;align-items:center;gap:13px;margin-bottom:24px}.logo{width:50px;height:50px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,#8b5cf6,#06b6d4);font-size:24px;box-shadow:0 10px 30px #06b6d433}.brand b{font-size:20px}.brand span{display:block;color:#999aae;font-size:12px;margin-top:3px}
+    h1{font-size:32px;line-height:1.05;margin:8px 0 10px}.sub{color:#9fa1b4;line-height:1.55;font-size:14px;margin-bottom:22px}
+    label{font-size:13px;color:#c9cad5;display:block;margin:0 0 8px}.input{display:flex;background:#090914;border:1px solid #ffffff14;border-radius:17px;overflow:hidden}.prefix{padding:15px 12px;color:#85879b;border-right:1px solid #ffffff10}.input input{width:100%;background:none;border:0;outline:0;color:#fff;font-size:16px;padding:15px 13px}
+    button{width:100%;margin-top:14px;border:0;border-radius:17px;padding:15px;font-size:15px;font-weight:800;color:#fff;background:linear-gradient(135deg,#7c3aed,#0891b2);cursor:pointer;box-shadow:0 12px 30px #0891b233}button:disabled{opacity:.5;cursor:not-allowed}
+    .status{margin-top:16px;padding:14px;border-radius:16px;background:#ffffff08;border:1px solid #ffffff0d;color:#aeb0c2;font-size:13px;line-height:1.45;display:none}.status.show{display:block}.status.error{border-color:#ef444455;color:#fecaca}.status.ok{border-color:#22c55e55;color:#bbf7d0}
+    .code{font-size:29px;letter-spacing:7px;font-weight:900;text-align:center;margin:12px 0;color:#fff}.steps{margin:20px 0 0;padding:0;list-style:none}.steps li{display:flex;gap:10px;margin:10px 0;color:#a8aabb;font-size:13px}.num{width:22px;height:22px;flex:none;border-radius:50%;display:grid;place-items:center;background:#ffffff10;color:#fff;font-size:11px}.foot{text-align:center;color:#686a7c;font-size:11px;margin-top:18px}
+    .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:7px;box-shadow:0 0 12px #22c55e}.mini{font-size:11px;color:#77798b;margin-top:9px}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="card">
+    <div class="brand"><div class="logo">Σ</div><div><b>SIGMA XMD</b><span>WhatsApp Pairing Center</span></div></div>
+    <h1>Connect your WhatsApp</h1>
+    <div class="sub">Enter your full WhatsApp number with country code. The bot will request an official WhatsApp pairing code from its live Baileys connection.</div>
+
+    <label for="number">WhatsApp number</label>
+    <div class="input"><div class="prefix">+</div><input id="number" inputmode="numeric" autocomplete="tel" placeholder="9779800000000" maxlength="15"></div>
+    <div class="mini">Example: Nepal <b>97798xxxxxxxx</b> • no spaces</div>
+    <button id="pairBtn">Generate Pairing Code</button>
+
+    <div id="status" class="status"></div>
+    <div class="foot"><span class="dot"></span>Pairing service protected by request throttling</div>
+  </section>
+</main>
+<script>
+const numberInput=document.getElementById('number');
+const btn=document.getElementById('pairBtn');
+const status=document.getElementById('status');
+function show(text,type=''){status.className='status show '+type;status.innerHTML=text}
+numberInput.addEventListener('input',()=>numberInput.value=numberInput.value.replace(/\D/g,'').slice(0,15));
+async function checkStatus(){
+  try{const r=await fetch('/api/status');const d=await r.json();
+    if(!d.pairingAvailable && d.registered) show('This SIGMA XMD session is already connected. Reset the session before pairing a different number.','error');
+  }catch{}
+}
+btn.addEventListener('click',async()=>{
+  const number=numberInput.value.trim();
+  if(number.length<7||number.length>15||number.startsWith('0')) return show('Enter a valid international number without +, spaces, or a leading 0.','error');
+  btn.disabled=true;btn.textContent='Generating…';show('Checking the number and requesting a fresh pairing code…');
+  try{
+    const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number})});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.error||'Pairing failed');
+    show(`<div>Pairing code</div><div class="code">${d.code}</div><div>Open WhatsApp → <b>Linked Devices</b> → <b>Link a Device</b> → <b>Link with phone number instead</b>, then enter the code above.</div>`,'ok');
+    btn.textContent='Code Generated';
+  }catch(e){show(e.message,'error');btn.disabled=false;btn.textContent='Generate Pairing Code'}
+});
+checkStatus();
+</script>
+</body>
+</html>
