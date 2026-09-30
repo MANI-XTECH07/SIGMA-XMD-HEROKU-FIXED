@@ -23,9 +23,9 @@
 <body>
 <main class="wrap">
   <section class="card">
-    <div class="brand"><div class="logo">Σ</div><div><b>SIGMA XMD</b><span>WhatsApp Pairing Center</span></div></div>
-    <h1>Connect your WhatsApp</h1>
-    <div class="sub">Link this bot as a WhatsApp companion device. Enter your full WhatsApp number with country code to request an official multi-device pairing code.</div>
+    <div class="brand"><div class="logo">Σ</div><div><b>SIGMA XMD</b><span>Multi-number WhatsApp Pairing Center</span></div></div>
+    <h1>Connect a number</h1>
+    <div class="sub">Each WhatsApp number gets its own isolated multi-device bot session. Numbers from any country are supported when entered with their country code.</div>
 
     <label for="number">WhatsApp number</label>
     <div class="input"><div class="prefix">+</div><input id="number" inputmode="numeric" autocomplete="tel" placeholder="9779800000000" maxlength="15"></div>
@@ -33,6 +33,7 @@
     <button id="pairBtn">Generate Pairing Code</button>
 
     <div id="status" class="status"></div>
+    <div id="sessions" class="status show">Loading connected numbers…</div>
     <div class="foot"><span class="dot"></span>Pairing service protected by request throttling</div>
   </section>
 </main>
@@ -44,8 +45,9 @@ function show(text,type=''){status.className='status show '+type;status.innerHTM
 numberInput.addEventListener('input',()=>numberInput.value=numberInput.value.replace(/\D/g,'').slice(0,15));
 async function checkStatus(){
   try{const r=await fetch('/api/status');const d=await r.json();
-    if(!d.pairingAvailable && d.registered) show('This SIGMA XMD multi-device session is already connected. Reset the session before pairing a different number.','error');
-  }catch{}
+    const rows=(d.sessions||[]).map(s=>`<div><b>${s.number||'Legacy session'}</b> — ${s.connected?'online':'starting'}${s.registered?' · paired':''}</div>`).join('');
+    document.getElementById('sessions').innerHTML=rows||'No numbers connected yet. Add the first number above.';
+  }catch{document.getElementById('sessions').textContent='Unable to load connected numbers.'}
 }
 btn.addEventListener('click',async()=>{
   const number=numberInput.value.trim();
@@ -56,7 +58,9 @@ btn.addEventListener('click',async()=>{
     const d=await r.json();
     if(!d.ok) throw new Error(d.error||'Pairing failed');
     show(`<div>Pairing code</div><div class="code">${d.code}</div><div>Open WhatsApp → <b>Linked Devices</b> → <b>Link a Device</b> → <b>Link with phone number instead</b>, then enter the code above.</div>`,'ok');
-    btn.textContent='Code Generated';
+    btn.disabled=false;
+    btn.textContent='Pair Another Number';
+    checkStatus();
   }catch(e){show(e.message,'error');btn.disabled=false;btn.textContent='Generate Pairing Code'}
 });
 checkStatus();

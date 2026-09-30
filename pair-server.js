@@ -4,8 +4,8 @@ const path = require('path');
 const { URL } = require('url');
 const settings = require('./settings');
 
-let currentSocket = null;
-let pairingInProgress = false;
+const sockets = new Map();
+const pairingInProgress = new Set();
 const recentRequests = new Map();
 
 const PORT = Number(process.env.PORT || process.env.PAIR_PORT || 3000);
@@ -20,11 +20,12 @@ function validNumber(number) {
   return number.length >= 7 && number.length <= 15 && !number.startsWith('0');
 }
 
-function rateLimited(ip) {
+function rateLimited(ip, number) {
+  const key = `${ip}:${number}`;
   const now = Date.now();
-  const last = recentRequests.get(ip) || 0;
+  const last = recentRequests.get(key) || 0;
   if (now - last < 30_000) return true;
-  recentRequests.set(ip, now);
+  recentRequests.set(key, now);
   return false;
 }
 
@@ -39,7 +40,17 @@ function sendJson(res, status, data) {
   res.end(body);
 }
 
-function startPairServer(getSocket) {
+function sessionSummary(sessionId, sock) {
+  return {
+    id: sessionId,
+    number: sock?.user?.id?.split(':')[0]?.split('@')[0] || (sessionId === 'default' ? null : sessionId),
+    connected: !!sock?.user,
+    registered: !!sock?.authState?.creds?.registered,
+    pairingAvailable: !sock?.authState?.creds?.registered,
+  };
+}
+
+function startPairServer(startSession) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -64,24 +75,19 @@ function startPairServer(getSocket) {
       }
 
       if (req.method === 'GET' && url.pathname === '/api/status') {
-        const sock = getSocket();
+        const sessions = [...sockets.entries()].map(([id, sock]) => sessionSummary(id, sock));
         return sendJson(res, 200, {
           ok: true,
           bot: settings.botName || 'SIGMA XMD',
-          connected: !!sock?.user,
-          registered: !!sock?.authState?.creds?.registered,
-          pairingAvailable: !!sock && !sock?.authState?.creds?.registered,
+          multiNumber: true,
+          sessions,
+          connected: sessions.some((session) => session.connected),
+          registered: sessions.some((session) => session.registered),
+          pairingAvailable: true,
         });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/pair') {
-        if (rateLimited(ip)) {
-          return sendJson(res, 429, {
-            ok: false,
-            error: 'Please wait 30 seconds before requesting another code.',
-          });
-        }
-
         let raw = '';
         for await (const chunk of req) raw += chunk;
 
@@ -100,30 +106,38 @@ function startPairServer(getSocket) {
           });
         }
 
-        const sock = getSocket();
-        if (!sock) {
-          return sendJson(res, 503, {
-            ok: false,
-            error: 'WhatsApp socket is still starting. Try again in a few seconds.',
-          });
-        }
-
-        if (sock.authState?.creds?.registered) {
-          return sendJson(res, 409, {
-            ok: false,
-          error: 'This multi-device session is already connected. Log out/reset the session before pairing another number.',
-          });
-        }
-
-        if (pairingInProgress) {
+        if (rateLimited(ip, number)) {
           return sendJson(res, 429, {
             ok: false,
-            error: 'A pairing request is already being processed. Please wait.',
+            error: 'Please wait 30 seconds before requesting another code for this number.',
           });
         }
 
-        pairingInProgress = true;
+        if (pairingInProgress.has(number)) {
+          return sendJson(res, 429, {
+            ok: false,
+            error: 'A pairing request for this number is already being processed. Please wait.',
+          });
+        }
+
+        pairingInProgress.add(number);
         try {
+          let sock = sockets.get(number);
+          if (!sock) sock = await startSession(number);
+          if (!sock) {
+            return sendJson(res, 503, {
+              ok: false,
+              error: 'The WhatsApp session is still starting. Try again in a few seconds.',
+            });
+          }
+
+          if (sock.authState?.creds?.registered) {
+            return sendJson(res, 409, {
+              ok: false,
+              error: 'This number is already paired. Use a different number or reset this number session.',
+            });
+          }
+
           const exists = await sock.onWhatsApp(`${number}@s.whatsapp.net`);
           if (!exists?.[0]?.exists) {
             return sendJson(res, 404, {
@@ -134,7 +148,6 @@ function startPairServer(getSocket) {
 
           const code = await sock.requestPairingCode(number);
           const formatted = String(code || '').match(/.{1,4}/g)?.join('-') || String(code || '');
-
           return sendJson(res, 200, {
             ok: true,
             code: formatted,
@@ -142,13 +155,13 @@ function startPairServer(getSocket) {
             message: 'Enter this code in WhatsApp → Linked Devices → Link a Device → Link with phone number instead.',
           });
         } catch (error) {
-          console.error('[PAIR API]', error);
+          console.error(`[PAIR API ${number}]`, error);
           return sendJson(res, 500, {
             ok: false,
             error: 'WhatsApp could not generate a pairing code. Check the bot logs and try again.',
           });
         } finally {
-          pairingInProgress = false;
+          pairingInProgress.delete(number);
         }
       }
 
@@ -162,7 +175,7 @@ function startPairServer(getSocket) {
   });
 
   server.listen(PORT, HOST, () => {
-    console.log(`🌐 SIGMA XMD Pair Website listening on ${HOST}:${PORT}`);
+    console.log(`🌐 SIGMA XMD Multi-number Pair Website listening on ${HOST}:${PORT}`);
   });
 
   return server;
@@ -170,10 +183,16 @@ function startPairServer(getSocket) {
 
 module.exports = {
   startPairServer,
-  setSocket(socket) {
-    currentSocket = socket;
+  setSocket(socket, sessionId = 'default') {
+    sockets.set(sessionId, socket);
   },
-  getSocket() {
-    return currentSocket;
+  removeSocket(sessionId = 'default') {
+    sockets.delete(sessionId);
+  },
+  getSocket(sessionId = 'default') {
+    return sockets.get(sessionId) || null;
+  },
+  getSockets() {
+    return sockets;
   },
 };

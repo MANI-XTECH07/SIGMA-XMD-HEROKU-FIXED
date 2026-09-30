@@ -50,6 +50,12 @@ const pairServer = require('./pair-server')
 // Override this path with SESSION_DIR when deploying on a persistent volume.
 const SESSION_DIR = process.env.SESSION_DIR || './session'
 
+function sessionDirectory(sessionId = 'default') {
+    // Keep the legacy ./session location for existing deployments; new
+    // numbers get their own directory under the configured session root.
+    return sessionId === 'default' ? SESSION_DIR : join(SESSION_DIR, sessionId)
+}
+
 // Import lightweight store
 const store = require('./lib/lightweight_store')
 
@@ -92,10 +98,11 @@ const question = (text) => {
 }
 
 
-async function startXeonBotInc() {
+async function startXeonBotInc(sessionId = 'default') {
     try {
         let { version, isLatest } = await fetchLatestBaileysVersion()
-        const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR)
+        const sessionDir = sessionDirectory(sessionId)
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
         const msgRetryCounterCache = new NodeCache()
 
         const XeonBotInc = makeWASocket({
@@ -125,13 +132,14 @@ async function startXeonBotInc() {
         // the live state so the web and chat pairing flows can reliably tell
         // whether this multi-device session is already registered.
         XeonBotInc.authState = state
-        XeonBotInc.sessionDir = SESSION_DIR
+        XeonBotInc.sessionDir = sessionDir
+        XeonBotInc.sessionId = sessionId
 
         // Save credentials when they update
         XeonBotInc.ev.on('creds.update', saveCreds)
 
     store.bind(XeonBotInc.ev)
-    pairServer.setSocket(XeonBotInc)
+    pairServer.setSocket(XeonBotInc, sessionId)
 
     // Message handling
     XeonBotInc.ev.on('messages.upsert', async chatUpdate => {
@@ -293,7 +301,8 @@ async function startXeonBotInc() {
             
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 try {
-                    rmSync(SESSION_DIR, { recursive: true, force: true })
+                    rmSync(sessionDir, { recursive: true, force: true })
+                    pairServer.removeSocket(sessionId)
                     console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
                 } catch (error) {
                     console.error('Error deleting session:', error)
@@ -304,7 +313,7 @@ async function startXeonBotInc() {
             if (shouldReconnect) {
                 console.log(chalk.yellow('Reconnecting...'))
                 await delay(5000)
-                startXeonBotInc()
+                startXeonBotInc(sessionId)
             }
         }
     })
@@ -370,19 +379,23 @@ async function startXeonBotInc() {
     } catch (error) {
         console.error('Error in startXeonBotInc:', error)
         await delay(5000)
-        startXeonBotInc()
+        startXeonBotInc(sessionId)
     }
 }
 
 
-// Start the pairing website.
-pairServer.startPairServer(() => pairServer.getSocket())
+// Start the pairing website and let it lazily create a session for each
+// requested number. Existing legacy credentials continue under "default".
+pairServer.startPairServer((sessionId) => startXeonBotInc(sessionId))
 
-// Start the bot with error handling
-startXeonBotInc().catch(error => {
-    console.error('Fatal error:', error)
-    process.exit(1)
-})
+if (existsSync(join(SESSION_DIR, 'creds.json'))) {
+    startXeonBotInc('default').catch(error => {
+        console.error('Fatal error starting legacy session:', error)
+        process.exit(1)
+    })
+} else {
+    console.log('🌐 No existing session found. Waiting for the first phone number from the pairing website.')
+}
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err)
 })
