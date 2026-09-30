@@ -46,6 +46,10 @@ const { rmSync, existsSync } = require('fs')
 const { join } = require('path')
 const pairServer = require('./pair-server')
 
+// Baileys stores the complete WhatsApp multi-device credential set here.
+// Override this path with SESSION_DIR when deploying on a persistent volume.
+const SESSION_DIR = process.env.SESSION_DIR || './session'
+
 // Import lightweight store
 const store = require('./lib/lightweight_store')
 
@@ -91,7 +95,7 @@ const question = (text) => {
 async function startXeonBotInc() {
     try {
         let { version, isLatest } = await fetchLatestBaileysVersion()
-        const { state, saveCreds } = await useMultiFileAuthState(`./session`)
+        const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR)
         const msgRetryCounterCache = new NodeCache()
 
         const XeonBotInc = makeWASocket({
@@ -116,6 +120,12 @@ async function startXeonBotInc() {
             connectTimeoutMs: 60000,
             keepAliveIntervalMs: 10000,
         })
+
+        // Baileys does not expose authState on the socket by default. Attach
+        // the live state so the web and chat pairing flows can reliably tell
+        // whether this multi-device session is already registered.
+        XeonBotInc.authState = state
+        XeonBotInc.sessionDir = SESSION_DIR
 
         // Save credentials when they update
         XeonBotInc.ev.on('creds.update', saveCreds)
@@ -283,7 +293,7 @@ async function startXeonBotInc() {
             
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 try {
-                    rmSync('./session', { recursive: true, force: true })
+                    rmSync(SESSION_DIR, { recursive: true, force: true })
                     console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
                 } catch (error) {
                     console.error('Error deleting session:', error)

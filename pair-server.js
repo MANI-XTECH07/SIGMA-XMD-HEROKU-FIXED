@@ -111,7 +111,7 @@ function startPairServer(getSocket) {
         if (sock.authState?.creds?.registered) {
           return sendJson(res, 409, {
             ok: false,
-            error: 'This bot session is already connected. Log out/reset the session before pairing another number.',
+          error: 'This multi-device session is already connected. Log out/reset the session before pairing another number.',
           });
         }
 

@@ -25,7 +25,7 @@
   <section class="card">
     <div class="brand"><div class="logo">Σ</div><div><b>SIGMA XMD</b><span>WhatsApp Pairing Center</span></div></div>
     <h1>Connect your WhatsApp</h1>
-    <div class="sub">Enter your full WhatsApp number with country code. The bot will request an official WhatsApp pairing code from its live Baileys connection.</div>
+    <div class="sub">Link this bot as a WhatsApp companion device. Enter your full WhatsApp number with country code to request an official multi-device pairing code.</div>
 
     <label for="number">WhatsApp number</label>
     <div class="input"><div class="prefix">+</div><input id="number" inputmode="numeric" autocomplete="tel" placeholder="9779800000000" maxlength="15"></div>
@@ -44,7 +44,7 @@ function show(text,type=''){status.className='status show '+type;status.innerHTM
 numberInput.addEventListener('input',()=>numberInput.value=numberInput.value.replace(/\D/g,'').slice(0,15));
 async function checkStatus(){
   try{const r=await fetch('/api/status');const d=await r.json();
-    if(!d.pairingAvailable && d.registered) show('This SIGMA XMD session is already connected. Reset the session before pairing a different number.','error');
+    if(!d.pairingAvailable && d.registered) show('This SIGMA XMD multi-device session is already connected. Reset the session before pairing a different number.','error');
   }catch{}
 }
 btn.addEventListener('click',async()=>{

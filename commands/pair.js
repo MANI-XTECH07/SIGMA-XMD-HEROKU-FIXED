@@ -92,7 +92,7 @@ async function pairCommand(sock, chatId, message, q) {
             } catch (apiError) {
                 console.error('API Error:', apiError);
                 const errorMessage = apiError.message === 'BOT_ALREADY_REGISTERED'
-                    ? "This bot session is already connected. Use the web pairing page only after resetting/logging out the current session."
+                    ? "This multi-device session is already connected. Use the web pairing page only after resetting/logging out the current session."
                     : "Failed to generate pairing code. Check the bot connection and try again.";
                 
                 await sock.sendMessage(chatId, {
@@ -126,4 +126,4 @@ async function pairCommand(sock, chatId, message, q) {
     }
 }
 
-module.exports = pairCommand; 
+module.exports = pairCommand;
