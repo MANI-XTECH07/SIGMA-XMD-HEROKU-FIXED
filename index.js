@@ -45,6 +45,7 @@ const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics'
 const { rmSync, existsSync } = require('fs')
 const { join } = require('path')
 const pairServer = require('./pair-server')
+const { usePostgresAuthState, deletePostgresSession, listPostgresSessions } = require('./lib/postgres-auth-state')
 
 // Baileys stores the complete WhatsApp multi-device credential set here.
 // Override this path with SESSION_DIR when deploying on a persistent volume.
@@ -102,7 +103,11 @@ async function startXeonBotInc(sessionId = 'default') {
     try {
         let { version, isLatest } = await fetchLatestBaileysVersion()
         const sessionDir = sessionDirectory(sessionId)
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
+        const auth = process.env.DATABASE_URL
+            ? await usePostgresAuthState(sessionId, sessionId)
+            : await useMultiFileAuthState(sessionDir)
+        const { state, saveCreds } = auth
+        if (process.env.DATABASE_URL) await saveCreds()
         const msgRetryCounterCache = new NodeCache()
 
         const XeonBotInc = makeWASocket({
@@ -261,6 +266,7 @@ async function startXeonBotInc(sessionId = 'default') {
         }
         
         if (connection == "open") {
+            if (auth.setStatus) await auth.setStatus('connected').catch(console.error)
             console.log(chalk.magenta(` `))
             console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
 
@@ -301,7 +307,8 @@ async function startXeonBotInc(sessionId = 'default') {
             
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 try {
-                    rmSync(sessionDir, { recursive: true, force: true })
+                    if (process.env.DATABASE_URL) await deletePostgresSession(sessionId)
+                    else rmSync(sessionDir, { recursive: true, force: true })
                     pairServer.removeSocket(sessionId)
                     console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
                 } catch (error) {
@@ -385,17 +392,23 @@ async function startXeonBotInc(sessionId = 'default') {
 
 
 // Start the pairing website and let it lazily create a session for each
-// requested number. Existing legacy credentials continue under "default".
+// requested number. Database-backed sessions are restored on every restart.
 pairServer.startPairServer((sessionId) => startXeonBotInc(sessionId))
 
-if (existsSync(join(SESSION_DIR, 'creds.json'))) {
-    startXeonBotInc('default').catch(error => {
-        console.error('Fatal error starting legacy session:', error)
-        process.exit(1)
-    })
-} else {
-    console.log('🌐 No existing session found. Waiting for the first phone number from the pairing website.')
+async function bootstrapSessions() {
+    if (process.env.DATABASE_URL) {
+        const stored = await listPostgresSessions()
+        if (!stored.length) console.log('🌐 No database sessions found. Waiting for the first phone number from the pairing website.')
+        for (const row of stored) {
+            startXeonBotInc(row.session_id).catch(error => console.error(`Session ${row.session_id} failed to start:`, error))
+        }
+        return
+    }
+    if (existsSync(join(SESSION_DIR, 'creds.json'))) {
+        startXeonBotInc('default').catch(error => { console.error('Fatal error starting legacy session:', error); process.exit(1) })
+    } else console.log('🌐 No existing session found. Set DATABASE_URL for durable multi-number sessions.')
 }
+bootstrapSessions().catch(error => { console.error('Fatal session bootstrap error:', error); process.exit(1) })
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err)
 })

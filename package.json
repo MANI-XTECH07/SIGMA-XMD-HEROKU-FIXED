@@ -13,6 +13,7 @@
     "install:panel": "npm install --legacy-peer-deps",
     "install:force": "npm install --force",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:sessions": "node scripts/smoke-test-sessions.js",
     "docker:build": "docker build -t docker run -e SESSION_ID=$SESSION_ID knightbot"
   },
   "keywords": [
@@ -54,6 +55,7 @@
     "performance-now": "^2.1.0",
     "phin": "^3.7.1",
     "pino": "^8.21.0",
+    "pg": "^8.13.1",
     "qrcode": "^1.5.4",
     "qrcode-reader": "^1.0.4",
     "qrcode-terminal": "^0.12.0",
