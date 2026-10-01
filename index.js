@@ -393,6 +393,7 @@ async function startXeonBotInc(sessionId = 'default') {
 
 // Start the pairing website and let it lazily create a session for each
 // requested number. Database-backed sessions are restored on every restart.
+console.log(`🌐 Multi-session build enabled; storage=${process.env.DATABASE_URL ? 'postgres' : 'filesystem'}`)
 pairServer.startPairServer((sessionId) => startXeonBotInc(sessionId))
 
 async function bootstrapSessions() {

@@ -11,6 +11,7 @@ const PORT = Number(process.env.PORT || process.env.PAIR_PORT || 3000);
 const HOST = process.env.PAIR_HOST || '0.0.0.0';
 const PAGE = path.join(__dirname, 'public', 'pair.html');
 const API_KEY = process.env.BOT_API_KEY || process.env.PAIR_API_KEY || '';
+const BUILD_ID = process.env.BUILD_ID || 'multi-session-2026-10-01';
 
 function cleanNumber(value) { return String(value || '').replace(/\D/g, ''); }
 function validNumber(number) { return number.length >= 7 && number.length <= 15 && !number.startsWith('0'); }
@@ -58,9 +59,18 @@ function startPairServer(startSession) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         return res.end(fs.readFileSync(PAGE));
       }
+      if (req.method === 'GET' && url.pathname === '/healthz') {
+        return sendJson(res, 200, {
+          ok: true,
+          service: 'sakuna-xmd-bot',
+          build: BUILD_ID,
+          multiNumber: true,
+          sessions: sessionManager.list().length,
+        });
+      }
       if (req.method === 'GET' && (url.pathname === '/api/status' || url.pathname === '/session/status')) {
         const sessions = allSessions();
-        return sendJson(res, 200, { ok: true, bot: settings.botName || 'SIGMA XMD', multiNumber: true, sessions, connected: sessions.some(s => s.connected), registered: sessions.some(s => s.registered), pairingAvailable: true });
+        return sendJson(res, 200, { ok: true, bot: settings.botName || 'SIGMA XMD', build: BUILD_ID, multiNumber: true, sessions, connected: sessions.some(s => s.connected), registered: sessions.some(s => s.registered), pairingAvailable: true });
       }
       if (req.method === 'POST' && (url.pathname === '/api/pair' || url.pathname === '/session/create')) {
         let payload = {};
